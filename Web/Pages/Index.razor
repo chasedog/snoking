@@ -1,9 +1,197 @@
 ﻿@page "/"
 
-<PageTitle>Index</PageTitle>
+<PageTitle>Schedules</PageTitle>
 
-<h1>Hello, world!</h1>
+@using Web.Data
+@inject ScheduleService _scheduleService
+@inject IJSRuntime _js
 
-Welcome to your new app.
+<h1>Schedule</h1>
 
-<SurveyPrompt Title="How is Blazor working for you?" />
+<div class="container">
+    <div class="row">
+        <div class="col-md-5 col-xs-12">
+            <select class="form-select" onchange="@OnSeasonChange">
+                @if (_seasons != default)
+                {
+                    foreach (var season in _seasons)
+                    {
+                        <option value="@season.Id">@season.Name</option>
+                    }
+                }
+            </select>
+            </div>
+        <div class="col-md-5 col-xs-11">
+
+            @if (_teams != default)
+            {
+            
+                <select class="form-select" onchange="@OnTeamChange">
+                    @foreach (var team in _teams)
+                    {
+                        <option value="@team.TeamId" selected="@(_selectedTeam == team.TeamId)">@team.Name</option>
+                    }
+                </select>
+            }
+        </div>
+        <div class="col-md-2 col-xs-1">
+            <div style="visibility: @(_fetching ? "visible" : "hidden")" class="lds-ellipsis"><div></div><div></div><div></div><div></div></div>
+        </div>
+    </div>
+
+
+
+@if (_snokingGames == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <EditForm Model="@_snokingGames">
+     <div class="row">
+         <div class="col-6">
+             <button class="btn btn-primary mb-3" disabled="@_snokingGames.All(x => !x.Checked)" @onclick="DownloadForBenchapp">Download BenchApp CSV</button>
+         </div>
+     </div>
+     <div class="row">
+         <div class="col">
+             <table class="table">
+                 <thead>
+                 <tr>
+                     <th></th>
+                     <th>Date</th>
+                     <th>Day</th>
+                     <th>Time</th>
+                     <th>Opponent</th>
+                     <th>Rink</th>
+                     <th>Score</th>
+                 </tr>
+                 </thead>
+                 <tbody>
+                 @foreach (var game in _snokingGames)
+                 {
+                     <tr>
+                         <td><InputCheckbox @bind-Value="game.Checked"></InputCheckbox></td>
+                         <td>@game.Date</td>
+                         <td>@game.DayOfWeek</td>
+                         <td>@game.Time</td>
+                         <td>@(game.IsHome ? "vs. " : "@ ")@game.Against</td>
+                         <td>@game.Rink</td>
+                         <td style="color: @game.Color">@game.Score</td>
+                     </tr>
+                 }
+                 </tbody>
+             </table>
+         </div>
+    </div>
+    </EditForm>
+}
+</div>
+
+@code {
+    private List<GameView>? _snokingGames;
+    private List<Season>? _seasons;
+    private List<Team>? _teams;
+    private int _selectedSeason;
+    private int _selectedTeam;
+    private bool _fetching;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var seasons = await _scheduleService.GetSeasons();
+        if (seasons.Count > 0)
+        {
+            _selectedSeason = seasons[0].Id;
+            await _fetchTeams();
+        }
+        _seasons = seasons;
+    }
+
+    private static int? _getScore(object score)
+    {
+        return int.TryParse(score?.ToString(), out var parsed) ? parsed : null;
+    }
+
+    public record GameView(int Id, string Against, string Date, string DayOfWeek, string Time, string Rink, int? OurScore, int? TheirScore, bool IsHome, SnokingGame SnokingGame)
+    {
+        public bool Checked { get; set; }
+        public string Color => OurScore > TheirScore ? "#20ff20" : OurScore == TheirScore ? "blue" : "red";
+        public string Score => OurScore == null || TheirScore == null ? "" : $"{ResultPrefix} {OurScore}-{TheirScore}";
+        public string ResultPrefix => OurScore > TheirScore ? "W" : OurScore == TheirScore ? "T" : "L";
+    }
+
+    private async Task DownloadForBenchapp(MouseEventArgs obj)
+    {
+        if (_snokingGames == null)
+        {
+            return;
+        }
+        var stream = new MemoryStream();
+        var streamWriter = new StreamWriter(stream, null, -1, true);
+        foreach (var game in _snokingGames.Where(x => x.Checked))
+        {
+            var home = game.IsHome ? game.SnokingGame.TeamHomeName : game.Against;
+            var away = !game.IsHome ? game.SnokingGame.TeamAwayName : game.Against;
+            var line = string.Join(",", "GAME", "REGULAR", "", home, away, game.SnokingGame.DateTime.ToString("dd/MM/yyy"), game.SnokingGame.DateTime.ToString("h:mm:ss tt"), "1:15", game.Rink);
+            await streamWriter.WriteLineAsync(line);
+        }
+        await streamWriter.FlushAsync();
+        stream.Position = 0;
+        using var streamRef = new DotNetStreamReference(stream);
+        await _js.InvokeVoidAsync("downloadFileFromStream", "games.csv", streamRef);
+    }
+
+    private async Task OnSeasonChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out _selectedSeason))
+        {
+            await _fetchTeams();
+        }
+    }
+
+    private async Task _fetchTeams()
+    {
+        var teams = await _scheduleService.GetTeams(_selectedSeason);
+        if (_selectedTeam == 0 || teams.All(x => x.TeamId != _selectedTeam))
+        {
+            _selectedTeam = teams.First().TeamId;
+        }
+        await _fetchGames();
+        _teams = teams;
+    }
+
+    private async Task OnTeamChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out _selectedTeam))
+        {
+            await _fetchGames();
+        }
+    }
+
+    private async Task _fetchGames()
+    {
+        try
+        {
+            _fetching = true;
+            var allGames = await _scheduleService.GetGames(_selectedSeason, _selectedTeam);
+
+            _snokingGames = allGames.OrderByDescending(x => x.DateTime).Select(game =>
+            {
+                var isHome = game.TeamHomeSeasonId == _selectedTeam;
+                var against = isHome ? game.TeamAwayName : game.TeamHomeName;
+                var ourScore = isHome ? _getScore(game.ScoreHome) : _getScore(game.ScoreAway);
+                var theirScore = isHome ? _getScore(game.ScoreAway) : _getScore(game.ScoreHome);
+                return new GameView(game.Id, against, game.Date, game.DateTime.DayOfWeek.ToString(), game.Time, game.RinkName, ourScore, theirScore, isHome,
+                    game);
+            }).ToList();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+        finally
+        {
+            _fetching = false;
+        }
+    }
+}
