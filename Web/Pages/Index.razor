@@ -3,14 +3,17 @@
 <PageTitle>Schedules</PageTitle>
 
 @using Web.Data
+@using Web.Components
 @inject ScheduleService _scheduleService
 @inject IJSRuntime _js
 
 <h1>Schedule</h1>
+<MySelect></MySelect>
 
 <div class="container">
     <div class="row">
         <div class="col-md-5 col-xs-12">
+            
             <select class="form-select" onchange="@OnSeasonChange">
                 @if (_seasons != default)
                 {
@@ -20,7 +23,7 @@
                     }
                 }
             </select>
-            </div>
+        </div>
         <div class="col-md-5 col-xs-11">
 
             @if (_teams != default)
@@ -47,41 +50,55 @@
 }
 else
 {
-    <EditForm Model="@_snokingGames">
+    
+    <EditForm Context="edit" Model="@_snokingGames">
      <div class="row">
          <div class="col-6">
-             <button class="btn btn-primary mb-3" disabled="@_snokingGames.All(x => !x.Checked)" @onclick="DownloadForBenchapp">Download BenchApp CSV</button>
+             <Button
+                 Disabled="@_snokingGames.All(x => !x.Checked)"
+                 OnClick="DownloadForBenchapp"
+                 Variant="@ButtonVariant.Contained"
+                 Color="@Color.Primary"
+                 Style="margin: 8px;">
+                 Download BenchApp CSV
+             </Button>
          </div>
      </div>
      <div class="row">
          <div class="col">
-             <table class="table">
-                 <thead>
-                 <tr>
-                     <th></th>
-                     <th>Date</th>
-                     <th>Day</th>
-                     <th>Time</th>
-                     <th>Opponent</th>
-                     <th>Rink</th>
-                     <th>Score</th>
-                 </tr>
-                 </thead>
-                 <tbody>
-                 @foreach (var game in _snokingGames)
-                 {
-                     <tr>
-                         <td><InputCheckbox @bind-Value="game.Checked"></InputCheckbox></td>
-                         <td>@game.Date</td>
-                         <td>@game.DayOfWeek</td>
-                         <td>@game.Time</td>
-                         <td>@(game.IsHome ? "vs. " : "@ ")@game.Against</td>
-                         <td>@game.Rink</td>
-                         <td style="color: @game.Color">@game.Score</td>
-                     </tr>
-                 }
-                 </tbody>
-             </table>
+             <Table>
+                 <TableHead>
+                     <TableRow>
+                         <TableCell></TableCell>
+                         <TableCell Sort="@Sort.Descending">
+                             <TableSortLabel
+                                 Active
+                                 Direction="@Sort.Descending">
+                                 Date
+                             </TableSortLabel>
+                         </TableCell>
+                         <TableCell>Day</TableCell>
+                         <TableCell>Time</TableCell>
+                         <TableCell>Opponent</TableCell>
+                         <TableCell>Rink</TableCell>
+                         <TableCell>Score</TableCell>
+                     </TableRow>
+                 </TableHead>
+                 <TableBody>
+                     @foreach (var game in _snokingGames)
+                     {
+                         <TableRow>
+                             <TableCell><InputCheckbox @bind-Value="game.Checked"></InputCheckbox></TableCell>
+                             <TableCell>@game.Date</TableCell>
+                             <TableCell>@game.DayOfWeek</TableCell>
+                             <TableCell>@game.Time</TableCell>
+                             <TableCell>@(game.IsHome ? "vs. " : "@ ")@game.Against</TableCell>
+                             <TableCell>@game.Rink</TableCell>
+                             <TableCell Style="@($"color: {game.Color}")">@game.Score</TableCell>
+                         </TableRow>
+                     }
+                 </TableBody>
+             </Table>
          </div>
     </div>
     </EditForm>
@@ -120,7 +137,7 @@ else
         public string ResultPrefix => OurScore > TheirScore ? "W" : OurScore == TheirScore ? "T" : "L";
     }
 
-    private async Task DownloadForBenchapp(MouseEventArgs obj)
+    private async Task DownloadForBenchapp()
     {
         if (_snokingGames == null)
         {
