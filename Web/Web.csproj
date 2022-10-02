@@ -8,8 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Skclusive.Material.Component" Version="5.2.0" />
-    <PackageReference Include="Skclusive.Material.Layout" Version="5.2.0" />
+    <PackageReference Include="Microsoft.Fast.Components.FluentUI" Version="1.4.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Components" />
   </ItemGroup>
 
 </Project>

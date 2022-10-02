@@ -3,17 +3,14 @@
 <PageTitle>Schedules</PageTitle>
 
 @using Web.Data
-@using Web.Components
 @inject ScheduleService _scheduleService
 @inject IJSRuntime _js
 
 <h1>Schedule</h1>
-<MySelect></MySelect>
 
 <div class="container">
     <div class="row">
         <div class="col-md-5 col-xs-12">
-            
             <select class="form-select" onchange="@OnSeasonChange">
                 @if (_seasons != default)
                 {
@@ -42,7 +39,19 @@
         </div>
     </div>
 
-
+    <style>
+        .gameRow:hover {
+            cursor: pointer;
+            background-color: #D6FCFF;
+        }
+        .selectedRow {
+            color: white;
+            background-color: lightblue;
+        }
+        .selectedRow:hover {
+            background-color: aquamarine;
+        }
+    </style>
 
 @if (_snokingGames == null)
 {
@@ -50,57 +59,46 @@
 }
 else
 {
-    
     <EditForm Context="edit" Model="@_snokingGames">
-     <div class="row">
-         <div class="col-6">
-             <Button
-                 Disabled="@_snokingGames.All(x => !x.Checked)"
-                 OnClick="DownloadForBenchapp"
-                 Variant="@ButtonVariant.Contained"
-                 Color="@Color.Primary"
-                 Style="margin: 8px;">
-                 Download BenchApp CSV
-             </Button>
-         </div>
-     </div>
-     <div class="row">
-         <div class="col">
-             <Table>
-                 <TableHead>
-                     <TableRow>
-                         <TableCell></TableCell>
-                         <TableCell Sort="@Sort.Descending">
-                             <TableSortLabel
-                                 Active
-                                 Direction="@Sort.Descending">
-                                 Date
-                             </TableSortLabel>
-                         </TableCell>
-                         <TableCell>Day</TableCell>
-                         <TableCell>Time</TableCell>
-                         <TableCell>Opponent</TableCell>
-                         <TableCell>Rink</TableCell>
-                         <TableCell>Score</TableCell>
-                     </TableRow>
-                 </TableHead>
-                 <TableBody>
-                     @foreach (var game in _snokingGames)
-                     {
-                         <TableRow>
-                             <TableCell><InputCheckbox @bind-Value="game.Checked"></InputCheckbox></TableCell>
-                             <TableCell>@game.Date</TableCell>
-                             <TableCell>@game.DayOfWeek</TableCell>
-                             <TableCell>@game.Time</TableCell>
-                             <TableCell>@(game.IsHome ? "vs. " : "@ ")@game.Against</TableCell>
-                             <TableCell>@game.Rink</TableCell>
-                             <TableCell Style="@($"color: {game.Color}")">@game.Score</TableCell>
-                         </TableRow>
-                     }
-                 </TableBody>
-             </Table>
-         </div>
-    </div>
+        <div class="row">
+            <div class="col-6">
+                <FluentButton
+                    Disabled="@_snokingGames.All(x => !x.Checked)"
+                    @onclick="@DownloadForBenchapp"
+                    Appearance="@Appearance.Filled"
+                    Style="margin: 8px;">
+                    Download BenchApp CSV
+                </FluentButton>
+            </div>
+            <div class="col-3">
+                <FluentTextField @bind-Value="@_homeNotes" Placeholder="White jerseys">Home Notes</FluentTextField>
+            </div>
+            <div class="col-3">
+                <FluentTextField @bind-Value="@_awayNotes" Placeholder="Dark jerseys">Away Notes</FluentTextField>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col">
+                @if (_snokingGames != null)
+                {
+                    <FluentDataGrid RowsData=_snokingGames ColumnDefinitions=ColumnDefinitions GridTemplateColumns="1fr 1fr 1fr 1fr 1fr 1fr 1fr" TItem=GameView>
+                        <RowItemTemplate>
+                            <FluentDataGridRow TItem="GameView" @onclick="() => context.Checked = !context.Checked" class="@(context.Checked ? "gameRow selectedRow" : "gameRow")">
+                                <FluentDataGridCell GridColumn=1>
+                                    <InputCheckbox @bind-Value="context.Checked"></InputCheckbox>
+                                </FluentDataGridCell>
+                                <FluentDataGridCell GridColumn=2>@context.Date</FluentDataGridCell>
+                                <FluentDataGridCell GridColumn=3>@context.DayOfWeek</FluentDataGridCell>
+                                <FluentDataGridCell GridColumn=4>@context.Time</FluentDataGridCell>
+                                <FluentDataGridCell GridColumn=5>@(context.IsHome ? "vs. " : "@ ")@context.Against</FluentDataGridCell>
+                                <FluentDataGridCell GridColumn=6>@context.Rink</FluentDataGridCell>
+                                <FluentDataGridCell GridColumn=7 Style="@($"color: {context.Color}")">@context.Score</FluentDataGridCell>
+                            </FluentDataGridRow>
+                        </RowItemTemplate>
+                    </FluentDataGrid>
+                }
+            </div>
+        </div>
     </EditForm>
 }
 </div>
@@ -112,6 +110,26 @@ else
     private int _selectedSeason;
     private int _selectedTeam;
     private bool _fetching;
+    private string _awayNotes;
+    private string _homeNotes;
+
+    public List<ColumnDefinition<GameView>> ColumnDefinitions = new List<ColumnDefinition<GameView>>
+    {
+        new("", x => x.Checked),
+        new("Date", x => x.Date),
+        new("Day", x => x.DayOfWeek),
+        new("Time", x => x.Time),
+        new("Opponent", x => x.Against),
+        new("Rink", x => x.Rink),
+    };
+
+    private Dictionary<string, string> _rinkNamesToAddresses = new()
+    {
+        { "Kirkland", "14326 124th Ave NE, Kirkland, WA 98034" },
+        { "Renton", "12620 164th Ave SE, Renton, WA 98059" },
+        { "Snoqualmie A", "35300 SE Douglas St, Snoqualmie, WA 98065" },
+        { "Snoqualmie B", "35300 SE Douglas St, Snoqualmie, WA 98065" },
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -145,17 +163,23 @@ else
         }
         var stream = new MemoryStream();
         var streamWriter = new StreamWriter(stream, null, -1, true);
-        foreach (var game in _snokingGames.Where(x => x.Checked))
+        var games = _snokingGames.Where(x => x.Checked).ToList();
+        foreach (var game in games)
         {
             var home = game.IsHome ? game.SnokingGame.TeamHomeName : game.Against;
             var away = !game.IsHome ? game.SnokingGame.TeamAwayName : game.Against;
-            var line = string.Join(",", "GAME", "REGULAR", "", home, away, game.SnokingGame.DateTime.ToString("dd/MM/yyy"), game.SnokingGame.DateTime.ToString("h:mm:ss tt"), "1:15", game.Rink);
+            var notes = game.IsHome ? _homeNotes ?? "White jerseys" : _awayNotes ?? "Dark jerseys";
+            var rinkAddress = $"\"{_rinkNamesToAddresses.GetValueOrDefault(game.Rink, "")}\"";
+            var line = string.Join(",", "GAME", "REGULAR", "", home, away, game.SnokingGame.DateTime.ToString("dd/MM/yyy"), game.SnokingGame.DateTime.ToString("h:mm:ss tt"), "1:15", game.Rink, rinkAddress, notes);
             await streamWriter.WriteLineAsync(line);
         }
         await streamWriter.FlushAsync();
         stream.Position = 0;
+        var maxGame = games.Max(x => x.SnokingGame.DateTime);
+        var minGame = games.Min(x => x.SnokingGame.DateTime);
         using var streamRef = new DotNetStreamReference(stream);
-        await _js.InvokeVoidAsync("downloadFileFromStream", "games.csv", streamRef);
+        var fileName = minGame != maxGame ? $"{minGame:yyyy-MM-dd} to {maxGame:yyyy-MM-dd} games.csv" : $"{minGame:yyyy-MM-dd} games.csv";
+        await _js.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
     }
 
     private async Task OnSeasonChange(ChangeEventArgs e)
