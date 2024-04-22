@@ -3,8 +3,10 @@
 <PageTitle>Schedules</PageTitle>
 
 @using Web.Data
+@using Blazor.Extensions.Storage
 @inject ScheduleService _scheduleService
 @inject IJSRuntime _js
+@inject LocalStorage _localStorage
 
 <h1>Schedule</h1>
 
@@ -33,6 +35,13 @@
                     }
                 </select>
             }
+            
+            <FluentButton
+                @onclick="@SetTeamAsFavorite"
+                Appearance="@Appearance.Filled"
+                Style="margin: 8px;">
+                    <FluentIcon Name="@FluentIcons.Star"></FluentIcon>Favorite
+            </FluentButton>
         </div>
         <div class="col-md-2 col-xs-1">
             <div style="visibility: @(_fetching ? "visible" : "hidden")" class="lds-ellipsis"><div></div><div></div><div></div><div></div></div>
@@ -113,6 +122,7 @@ else
     private string _awayNotes;
     private string _homeNotes;
 
+
     public List<ColumnDefinition<GameView>> ColumnDefinitions = new List<ColumnDefinition<GameView>>
     {
         new("", x => x.Checked),
@@ -131,7 +141,7 @@ else
         { "Snoqualmie B", "35300 SE Douglas St, Snoqualmie, WA 98065" },
     };
 
-    protected override async Task OnInitializedAsync()
+    protected async Task OnAfterRenderAsync()
     {
         var seasons = await _scheduleService.GetSeasons();
         if (seasons.Count > 0)
@@ -182,6 +192,11 @@ else
         await _js.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
     }
 
+    private async Task SetTeamAsFavorite()
+    {
+        await _localStorage.SetItem("FavoriteTeam", _selectedTeam);
+    }
+
     private async Task OnSeasonChange(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out _selectedSeason))
@@ -192,10 +207,18 @@ else
 
     private async Task _fetchTeams()
     {
+        var favoriteTeam = await _localStorage.GetItem<int>("FavoriteTeam");
         var teams = await _scheduleService.GetTeams(_selectedSeason);
         if (_selectedTeam == 0 || teams.All(x => x.TeamId != _selectedTeam))
         {
-            _selectedTeam = teams.First().TeamId;
+            if (teams.Any(x => x.TeamId == favoriteTeam))
+            {
+                _selectedTeam = favoriteTeam;
+            }
+            else
+            {
+                _selectedTeam = teams.First().TeamId;
+            }
         }
         await _fetchGames();
         _teams = teams;

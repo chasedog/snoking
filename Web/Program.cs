@@ -1,3 +1,5 @@
+using Blazor.Extensions.Storage;
+using Microsoft.Fast.Components.FluentUI;
 using Web.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +8,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddSingleton<ScheduleService>();
+builder.Services.AddHttpClient();
+builder.Services.AddStorage();
+builder.Services.AddFluentUIComponents();
 
 var app = builder.Build();
 
